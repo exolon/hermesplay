@@ -1,8 +1,8 @@
 package com.example.hermesplay
 
 import android.content.Context
+import android.os.BatteryManager
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,6 +34,9 @@ import com.example.hermesplay.models.MediaItem
 import com.example.hermesplay.viewmodels.UiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,18 +51,32 @@ fun DirectoryScreen(
     onToggleShowHidden: () -> Unit,
     onToggleHideItem: (android.net.Uri) -> Unit
 ) {
-    val prefs = LocalContext.current.getSharedPreferences("hermes_prefs", Context.MODE_PRIVATE)
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("hermes_prefs", Context.MODE_PRIVATE)
     var gridSize by remember { mutableFloatStateOf(prefs.getFloat("grid_size", 180f)) }
 
+    // Parent HUD State
+    var currentTime by remember { mutableStateOf("") }
+    var batteryLevel by remember { mutableIntStateOf(0) }
+
+    // Background loop to update the clock and battery
+    LaunchedEffect(Unit) {
+        val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        while (true) {
+            currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+            batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            delay(5000) // Update every 5 seconds
+        }
+    }
+
     Scaffold(
-        containerColor = Color.Transparent, // THE TWEAK: Let the wallpaper shine through
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
-                    // THE FEATURE: Icon + App Name
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage( // Changed to AsyncImage
-                            model = R.mipmap.ic_launcher, // Simplified to model
+                        AsyncImage(
+                            model = R.mipmap.ic_launcher,
                             contentDescription = "App Icon",
                             modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
                         )
@@ -68,15 +84,30 @@ fun DirectoryScreen(
                         Text("HermesPlay", style = MaterialTheme.typography.titleLarge)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, titleContentColor = Color.White, actionIconContentColor = Color.White),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
                 actions = {
+                    // The Parent HUD (Clock & Battery)
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.padding(end = 16.dp)
+                    ) {
+                        Text(text = currentTime, color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                        Text(text = "Battery: $batteryLevel%", color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
+                    }
+
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 16.dp).width(180.dp)) {
                         Text("Size", color = Color.Gray, style = MaterialTheme.typography.labelMedium)
                         Spacer(modifier = Modifier.width(8.dp))
                         Slider(
-                            value = gridSize, onValueChange = { gridSize = it },
+                            value = gridSize,
+                            onValueChange = { gridSize = it },
                             onValueChangeFinished = { prefs.edit().putFloat("grid_size", gridSize).apply() },
-                            valueRange = 120f..400f, colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.DarkGray)
+                            valueRange = 120f..400f,
+                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.DarkGray)
                         )
                     }
 
@@ -117,7 +148,8 @@ fun DirectoryScreen(
                             items(visibleItems, key = { it.uri.toString() }) { item ->
                                 val isHidden = uiState.hiddenUris.contains(item.uri.toString())
                                 MediaItemCard(
-                                    item = item, isHidden = isHidden,
+                                    item = item,
+                                    isHidden = isHidden,
                                     onClick = {
                                         when (item) {
                                             is MediaItem.Folder -> onFolderClick(item)
@@ -141,7 +173,10 @@ fun DirectoryScreen(
 
 @Composable
 fun BackNavigationCard(onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable(onClick = onClick).clip(RoundedCornerShape(12.dp)), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+    Card(
+        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable(onClick = onClick).clip(RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Default.ArrowBack, "Go Back", modifier = Modifier.size(64.dp), tint = Color.White)
             Spacer(modifier = Modifier.height(8.dp))
@@ -169,7 +204,7 @@ fun MediaItemCard(item: MediaItem, isHidden: Boolean, onClick: () -> Unit, onHid
                 }
             )
         }.clip(RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)) // Added slight transparency to cards!
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current

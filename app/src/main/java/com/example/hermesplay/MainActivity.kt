@@ -99,7 +99,7 @@ fun AppEntryPointWithSplash(storageManager: StorageManager, viewModel: MainViewM
 
     // Animate the wallpaper fading from 100% brightness to 20% brightness
     val backgroundAlpha by animateFloatAsState(
-        targetValue = if (showSplash) 1f else 0.20f,
+        targetValue = if (showSplash) 1f else 0.45f,
         animationSpec = tween(durationMillis = 800),
         label = "WallpaperFade"
     )
