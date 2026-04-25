@@ -13,7 +13,12 @@ import kotlinx.coroutines.launch
 
 sealed interface UiState {
     object Loading : UiState
-    data class Success(val items: List<MediaItem>, val isRoot: Boolean) : UiState
+    data class Success(
+        val items: List<MediaItem>,
+        val isRoot: Boolean,
+        val hiddenUris: Set<String>,
+        val showHidden: Boolean
+    ) : UiState
     data class Error(val message: String) : UiState
 }
 
@@ -24,7 +29,9 @@ class MainViewModel(
 
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
     private val folderStack = mutableListOf<Uri>()
+    private var isShowingHidden = false // Tracks if the "Eye" icon is open
 
     init { loadRootFolder() }
 
@@ -55,37 +62,48 @@ class MainViewModel(
 
     fun jumpToRoot() {
         if (folderStack.size > 1) {
-            val rootFolder = folderStack.first()
+            val root = folderStack.first()
             folderStack.clear()
-            folderStack.add(rootFolder)
-            fetchFolderContents(rootFolder)
+            folderStack.add(root)
+            fetchFolderContents(root)
         }
     }
 
-    // NEW: Forces a rescan of the current folder
     fun refreshCurrentFolder() {
         if (folderStack.isNotEmpty()) {
-            val currentFolder = folderStack.last()
-            videoRepository.invalidateCache(currentFolder)
-            fetchFolderContents(currentFolder)
+            val current = folderStack.last()
+            videoRepository.invalidateCache(current)
+            fetchFolderContents(current)
         }
+    }
+
+    fun rescanEverything() {
+        videoRepository.clearAllCache()
+        loadRootFolder()
+    }
+
+    // --- NEW: Hidden Items Handlers ---
+    fun toggleShowHidden() {
+        isShowingHidden = !isShowingHidden
+        if (folderStack.isNotEmpty()) fetchFolderContents(folderStack.last())
+    }
+
+    fun toggleHideItem(uri: Uri) {
+        videoRepository.toggleHiddenUri(uri.toString())
+        if (folderStack.isNotEmpty()) fetchFolderContents(folderStack.last())
     }
 
     private fun fetchFolderContents(uri: Uri) {
         viewModelScope.launch {
-            if (!videoRepository.isCached(uri)) { _uiState.value = UiState.Loading }
+            if (!videoRepository.isCached(uri)) _uiState.value = UiState.Loading
             try {
                 val items = videoRepository.getContents(uri)
                 val isRoot = folderStack.size == 1
-                _uiState.value = UiState.Success(items, isRoot)
+                val hiddenUris = videoRepository.getHiddenUris()
+                _uiState.value = UiState.Success(items, isRoot, hiddenUris, isShowingHidden)
             } catch (e: Exception) {
-                _uiState.value = UiState.Error("Failed to load folder: ${e.message}")
+                _uiState.value = UiState.Error("Failed: ${e.message}")
             }
         }
-    }
-    // NEW: Wipes the entire cache and reloads from the top
-    fun rescanEverything() {
-        videoRepository.clearAllCache()
-        loadRootFolder()
     }
 }
